@@ -5,8 +5,7 @@ const bodyParser = require("body-parser");
 const validator = require("express-joi-validation").createValidator({});
 const joi = require("joi");
 const PORT = process.env.PORT || 3000;
-const BACKEND_HOST =
-  process.env.BACKEND_HOST || "http://sf-legacy-api.now.sh/items";
+const BACKEND_HOST = process.env.BACKEND_HOST;
 const { isEmpty, pipe, prop, unnest, andThen } = require("ramda");
 const bluebird = require("bluebird");
 const CONCURRENCY = 10 || process.env.CONCURRENCY;
