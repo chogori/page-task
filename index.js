@@ -5,12 +5,14 @@ const bodyParser = require("body-parser");
 const validator = require("express-joi-validation").createValidator({});
 const joi = require("joi");
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || "localhost";
-const BACKEND_HOST = process.env.BACKEND_HOST;
-const r = require("ramda");
+const BACKEND_HOST =
+  process.env.BACKEND_HOST || "http://sf-legacy-api.now.sh/items";
+const { isEmpty, pipe, prop, unnest, andThen } = require("ramda");
+const bluebird = require("bluebird");
+const CONCURRENCY = 10 || process.env.CONCURRENCY;
 
 const calculateNumberOfRequestsAndOffset = (page, perPage) => {
-  const offset = (page - 1) * perPage + 1;
+  const offset = (page - 1) * perPage;
   const limit = perPage;
 
   const startPositionForRequests = Math.floor(offset / 100);
@@ -23,11 +25,13 @@ const calculateNumberOfRequestsAndOffset = (page, perPage) => {
   };
 };
 
-function range(start, end) {
+const range = (start, end) => {
   return Array(end - start)
     .fill()
     .map((_, idx) => start + idx + 1);
-}
+};
+
+const processResponse = pipe(prop("text"), JSON.parse, prop("data"));
 
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
@@ -46,19 +50,21 @@ const response = async (req, res) => {
     offset,
   } = calculateNumberOfRequestsAndOffset(page, perPage);
 
-  const parsedResponseFromBackend = r.unnest(
-    await Promise.all(
-      [...range(startPositionForRequests, endPositionForRequests)].map(
-        async (_) => {
-          const { text } = await superagent.get(`${BACKEND_HOST}?page=${_}`);
-
-          return r.pipe(JSON.parse, r.prop("data"))(text);
-        }
-      )
+  const parsedResponseFromBackend = unnest(
+    await bluebird.map(
+      [...range(startPositionForRequests, endPositionForRequests)],
+      async (_) =>
+        pipe(
+          (_) => superagent.get(`${BACKEND_HOST}?page=${_}`),
+          andThen(processResponse)
+        )(_),
+      {
+        concurrency: CONCURRENCY,
+      }
     )
   );
 
-  if (r.isEmpty(parsedResponseFromBackend)) {
+  if (isEmpty(parsedResponseFromBackend)) {
     return res.json({
       perPage,
       page,
